@@ -60,7 +60,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 async def get_gemini_response(user_message):
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 temperature=0.3,
