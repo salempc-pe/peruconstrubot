@@ -117,13 +117,20 @@ async def get_gemini_response(user_message):
         "gemini-2.5-flash",
         "gemini-2.0-flash-001", 
         "gemini-2.0-flash",
-        "gemini-2.5-pro"
+        "gemini-2.0-flash-exp"  # Respaldo experimental
     ]
     
     full_prompt = f"{SYSTEM_PROMPT}\n\nUsuario: {user_message}"
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}],
-        "generationConfig": {"temperature": 0.3}
+        "generationConfig": {"temperature": 0.3},
+        # Configuramos seguridad permisiva para evitar bloqueos falsos en temas técnicos
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ]
     }
     
     last_error = ""
@@ -131,44 +138,69 @@ async def get_gemini_response(user_message):
     for model in models:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
-            response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+            # Timeout de 15 segundos para no colgar a Telegram
+            response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload, timeout=15)
             
             if response.status_code == 200:
-                # Éxito
-                return response.json().get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
-            elif response.status_code == 429:
-                logging.warning(f"Quota excedida en {model}, probando siguiente...")
-                last_error = "Cuota excedida (Tu plan gratuito tiene límites por minuto)."
-                continue # Probar siguiente modelo
-            else:
-                logging.error(f"Error {model} ({response.status_code})")
-                last_error = f"Error {response.status_code}: {response.text[:100]}"
+                data = response.json()
+                # Verificar si hay candidatos válidos
+                if 'candidates' in data and data['candidates']:
+                    candidate = data['candidates'][0]
+                    # Verificar si fue bloqueado
+                    if candidate.get('finishReason') == 'SAFETY':
+                        last_error = "⚠️ Respuesta bloqueada por filtro de seguridad de Google."
+                        continue # Intentar otro modelo
+                        
+                    content_parts = candidate.get('content', {}).get('parts', [])
+                    if content_parts:
+                        return content_parts[0].get('text', 'Sin texto.')
                 
+                last_error = "La IA devolvió una respuesta vacía (posible error interno)."
+                logging.warning(f"{model} respuesta vacía: {data}")
+
+            elif response.status_code == 429:
+                logging.warning(f"Quota {model} excedida.")
+                last_error = "Tráfico alto (429). Intentando otro servidor..."
+                continue
+            else:
+                logging.error(f"Error {model} ({response.status_code}): {response.text}")
+                last_error = f"Error {response.status_code}."
+                
+        except requests.exceptions.Timeout:
+            logging.error(f"Timeout en {model}")
+            last_error = "Tiempo de espera agotado."
         except Exception as e:
             logging.error(f"Excepción {model}: {e}")
             last_error = str(e)
 
-    return f"⚠️ No pude responder. {last_error}\nIntenta esperar 1 minuto."
+    return f"⚠️ No pude responder. Causa: {last_error}\nPrueba reformular la pregunta."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id, 
-        text="👷‍♂️ Hola, soy tu Ingeniero Residente Virtual. \n\nEstoy listo para ayudarte con metrados, dosificaciones y consultas del RNE. ¿Qué vamos a construir hoy?"
+        text="👷‍♂️ **Ingeniero Residente v2.0**\n\nListo para metrados y costos (Lima 2025).\nEjemplo: _'Costo de muro soga 3x2m'_"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    ai_response = await get_gemini_response(user_text)
-    
-    if ai_response:
-        if len(ai_response) > 4000:
-            for x in range(0, len(ai_response), 4000):
-                await context.bot.send_message(chat_id=update.effective_chat.id, text=ai_response[x:x+4000], parse_mode='Markdown')
+    try:
+        user_text = update.message.text
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        
+        ai_response = await get_gemini_response(user_text)
+        
+        if ai_response:
+            # Cortar mensajes muy largos
+            if len(ai_response) > 4000:
+                for x in range(0, len(ai_response), 4000):
+                    await context.bot.send_message(chat_id=update.effective_chat.id, text=ai_response[x:x+4000], parse_mode='Markdown')
+            else:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=ai_response, parse_mode='Markdown')
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=ai_response, parse_mode='Markdown')
-    else:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="No pude generar una respuesta, intenta de nuevo.")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ Error crítico: Respuesta nula.")
+            
+    except Exception as e:
+        logging.error(f"Error en handler: {e}")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ Ocurrió un error interno en el bot. Intenta más tarde.")
 
 # --- Main ---
 if __name__ == '__main__':
