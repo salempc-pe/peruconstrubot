@@ -55,22 +55,31 @@ Reglas de Operación:
 - Formato: Datos de Entrada -> Cálculos -> Resultados (materiales) -> Notas.
 """
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+import requests
+import json
 
 async def get_gemini_response(user_message):
     try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.3,
-            ),
-            contents=[user_message]
-        )
-        return response.text
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        headers = {'Content-Type': 'application/json'}
+        data = {
+            "contents": [{"parts": [{"text": user_message}]}],
+            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "generationConfig": {"temperature": 0.3}
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result['candidates'][0]['content']['parts'][0]['text']
+        else:
+            logging.error(f"Error Gemini API ({response.status_code}): {response.text}")
+            return f"Error técnico ({response.status_code}). Verifica tu API Key."
+            
     except Exception as e:
-        logging.error(f"Error en Gemini API: {e}")
-        return "Disculpa, hubo un error técnico calculando tu respuesta. Intenta de nuevo."
+        logging.error(f"Excepción en llamada a Gemini: {e}")
+        return "Disculpa, hubo un error técnico interno."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
