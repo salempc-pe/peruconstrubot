@@ -2,6 +2,8 @@
 import os
 import asyncio
 import logging
+import threading
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from google import genai
@@ -10,12 +12,24 @@ from google.genai import types
 # --- Configuración ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+PORT = int(os.environ.get("PORT", 8080)) # Render asigna un puerto dinámico
 
 # Configurar Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+# --- Servidor Web "Dummy" para Render ---
+# Render necesita un puerto abierto para saber que la app está viva.
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "Bot Ingeniero: ¡Operativo y en Obra! 🏗️"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=PORT)
 
 # --- Personalidad del Ingeniero ---
 SYSTEM_PROMPT = """
@@ -41,7 +55,6 @@ Reglas de Operación:
 - Formato: Datos de Entrada -> Cálculos -> Resultados (materiales) -> Notas.
 """
 
-# --- Cliente de Gemini ---
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 async def get_gemini_response(user_message):
@@ -50,7 +63,7 @@ async def get_gemini_response(user_message):
             model="gemini-2.0-flash",
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
-                temperature=0.3, # Baja temperatura para ser preciso
+                temperature=0.3,
             ),
             contents=[user_message]
         )
@@ -59,7 +72,6 @@ async def get_gemini_response(user_message):
         logging.error(f"Error en Gemini API: {e}")
         return "Disculpa, hubo un error técnico calculando tu respuesta. Intenta de nuevo."
 
-# --- Handlers de Telegram ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id, 
@@ -68,16 +80,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
-    
-    # Mostrar que está "escribiendo..."
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    
-    # Obtener respuesta de Gemini
     ai_response = await get_gemini_response(user_text)
     
-    # Enviar respuesta
     if ai_response:
-        # Dividir mensajes largos si exceden el límite de Telegram (4096 caracteres)
         if len(ai_response) > 4000:
             for x in range(0, len(ai_response), 4000):
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=ai_response[x:x+4000], parse_mode='Markdown')
@@ -88,22 +94,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Main ---
 if __name__ == '__main__':
-    if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
-        print("Error: Faltan las variables de entorno TELEGRAM_TOKEN o GEMINI_API_KEY")
-        # No salimos con exit(1) para evitar crash loop en local si solo estamos probando, pero en prod es necesario.
-        # En este caso, imprimimos advertencia.
-    
-    # Usamos ApplicationBuilder con el token
-    if TELEGRAM_TOKEN:
-        application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # 1. Iniciar servidor web en un hilo separado (para Render)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
 
-        start_handler = CommandHandler('start', start)
-        message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
-
-        application.add_handler(start_handler)
-        application.add_handler(message_handler)
-
+    # 2. Iniciar Bot
+    if TELEGRAM_TOKEN and GEMINI_API_KEY:
         print("👷‍♂️ Bot Ingeniero iniciado...")
+        application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+        application.add_handler(CommandHandler('start', start))
+        application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
         application.run_polling()
     else:
-        print("No se pudo iniciar el bot: Falta TELEGRAM_TOKEN")
+        print("Error: Faltan las llaves de API. El bot no puede iniciar.")

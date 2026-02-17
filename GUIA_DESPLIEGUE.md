@@ -1,39 +1,17 @@
-# Plan de Despliegue: Construction Bot (Render + Google Gemini)
 
-## 1. Obtener Credenciales
+# ⚠️ IMPORTANTE: Sigue esto para desplegar GRATIS
 
-Necesitas dos "llaves" secretas. Guárdalas bien, no las compartas:
+> **NOTA SOBRE TARJETAS**: Es posible que Render pida una tarjeta **solo para verificar que eres humano**, incluso para el plan gratuito ("Web Service"). 
+> - Si te pide tarjeta, **asegúrate de que en la pantalla de pago el precio diga "Free" o "$0.00/mo"**.
+> - Si dice "$7.00/mo", cámbialo a **Free** en la configuración de la instancia.
 
-1.  **Telegram Bot Token**:
-    *   Abre Telegram y busca al usuario `@BotFather`.
-    *   Escribe el comando `/newbot`.
-    *   Ponle un nombre (ej. "Ingeniero Civil Bot") y un usuario (ej. `mi_ingeniero_bot`).
-    *   Te dará un token largo que empieza con `7...`. **Cópialo**.
+## Pasos RÁPIDOS
 
-2.  **Google Gemini API Key**:
-    *   Ve a [Google AI Studio](https://aistudio.google.com/).
-    *   Clic en "Get API key" -> "Create API key in new project".
-    *   **Copia la clave** (empieza con `AIza...`).
+1.  **Sube estos cambios a GitHub** (bot.py, render.yaml, requirements.txt).
+2.  Ve a Render Dashboard -> **New** -> **Blueprint**.
+3.  Conecta el repo.
+4.  Render leerá automáticamente el archivo `render.yaml` que ahora dice `type: web` y `plan: free`.
+5.  Introduce tus variables (`TELEGRAM_TOKEN`, `GEMINI_API_KEY`).
+6.  ¡Dale a **Apply**!
 
----
-
-## 2. Preparar el Código
-
-Ya tienes los archivos necesarios en esta carpeta:
-*   `bot.py`: El cerebro del bot.
-*   `requirements.txt`: Las librerías necesarias.
-*   `render.yaml`: La configuración para la nube.
-
----
-
-## 3. Subir a GitHub y Render
-
-1.  Sube esta carpeta a un **repositorio de GitHub**.
-2.  Entra a [Render.com](https://render.com/) y crea una cuenta.
-3.  Haz clic en "New" -> "Blueprint".
-4.  Conecta tu repositorio.
-5.  Render detectará el archivo `render.yaml`.
-6.  **IMPORTANTE**: Te pedirá las "Environment Variables" (Variables de Entorno). Introduce tus llaves:
-    *   `TELEGRAM_TOKEN`
-    *   `GEMINI_API_KEY`
-7.  Haz clic en "Apply". ¡Tu bot estará vivo en unos minutos!
+Tu bot arrancará. Recuerda que la versión gratuita "duerme" si no se usa por 15 minutos, pero debería responder cuando lo despiertes.
