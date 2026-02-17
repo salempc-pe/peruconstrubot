@@ -59,48 +59,32 @@ import json
 
 
 
+
 async def get_gemini_response(user_message):
     clean_key = GEMINI_API_KEY.strip() if GEMINI_API_KEY else ""
+    # Usamos el modelo confirmado por el diagnóstico
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={clean_key}"
+    headers = {'Content-Type': 'application/json'}
     
-    # 1. Intentar con gemini-1.5-flash en endpoint v1beta (Más capaz)
-    models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-pro",
-        "gemini-1.0-pro"
-    ]
-
     full_prompt = f"{SYSTEM_PROMPT}\n\nUsuario: {user_message}"
-
-    for model_name in models_to_try:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
-            payload = {
-                "contents": [{"parts": [{"text": full_prompt}]}]
-            }
-            response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
-            
-            if response.status_code == 200:
-                return response.json().get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
-            
-            # Si es 404, probamos el siguiente modelo
-            if response.status_code != 404:
-                logging.error(f"Error {model_name}: {response.text}")
-                
-        except Exception as e:
-            logging.error(f"Excepción {model_name}: {e}")
-
-    # 2. Si todo falla, pedir lista de modelos disponibles para depurar
+    
+    payload = {
+        "contents": [{"parts": [{"text": full_prompt}]}],
+        "generationConfig": {"temperature": 0.3}
+    }
+    
     try:
-        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
-        list_resp = requests.get(list_url)
-        if list_resp.status_code == 200:
-            available = [m['name'] for m in list_resp.json().get('models', [])]
-            return f"⚠️ Error de Configuración. Modelos disponibles para tu llave: {', '.join(available[:5])}..."
+        response = requests.post(url, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            return response.json().get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
         else:
-            return f"⚠️ Tu API Key no funciona o no tiene permisos. Error: {list_resp.status_code}"
-    except:
-        return "Error fatal. Verifica tu API Key en Google AI Studio."
+            logging.error(f"Error Gemini 2.0 ({response.status_code}): {response.text}")
+            return f"⚠️ Error {response.status_code}. Detalle: {response.text[:100]}"
+            
+    except Exception as e:
+        logging.error(f"Excepción: {e}")
+        return "Error de conexión con la IA."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
