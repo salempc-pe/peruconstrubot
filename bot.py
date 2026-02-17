@@ -58,24 +58,41 @@ Reglas de Operación:
 import requests
 import json
 
+
 async def get_gemini_response(user_message):
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        clean_key = GEMINI_API_KEY.strip() if GEMINI_API_KEY else ""
+        # Usamos la versión concreta 001 que es más estable para referencias directas
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key={clean_key}"
         headers = {'Content-Type': 'application/json'}
-        data = {
-            "contents": [{"parts": [{"text": user_message}]}],
-            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-            "generationConfig": {"temperature": 0.3}
+        
+        # Estructura del payload
+        payload = {
+            "contents": [{
+                "parts": [{"text": user_message}]
+            }],
+            "system_instruction": {
+                "parts": [{"text": SYSTEM_PROMPT}]
+            },
+            "generationConfig": {
+                "temperature": 0.3
+            }
         }
         
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=payload)
         
         if response.status_code == 200:
             result = response.json()
-            return result['candidates'][0]['content']['parts'][0]['text']
+            # Navegar la respuesta con seguridad
+            try:
+                return result.get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
+            except IndexError:
+                return "La IA no generó contenido (Bloqueo de seguridad posible)."
         else:
-            logging.error(f"Error Gemini API ({response.status_code}): {response.text}")
-            return f"Error técnico ({response.status_code}). Verifica tu API Key."
+            # Mostrar el error real para depurar
+            error_detail = response.text
+            logging.error(f"Error Gemini API ({response.status_code}): {error_detail}")
+            return f"⚠️ Error {response.status_code} de Google.\nDetalle: {error_detail[:200]}..."
             
     except Exception as e:
         logging.error(f"Excepción en llamada a Gemini: {e}")
