@@ -61,8 +61,8 @@ import json
 async def get_gemini_response(user_message):
     try:
         clean_key = GEMINI_API_KEY.strip() if GEMINI_API_KEY else ""
-        # Usamos la versión concreta 001 que es más estable para referencias directas
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key={clean_key}"
+        # Usamos el alias genérico que suele estar siempre disponible
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
         headers = {'Content-Type': 'application/json'}
         
         # Estructura del payload
