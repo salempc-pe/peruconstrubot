@@ -62,29 +62,44 @@ import json
 
 async def get_gemini_response(user_message):
     clean_key = GEMINI_API_KEY.strip() if GEMINI_API_KEY else ""
-    # Usamos el modelo confirmado por el diagnóstico
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={clean_key}"
-    headers = {'Content-Type': 'application/json'}
+    
+    # Lista de modelos confirmados en tu cuenta (Rotación para evitar límites)
+    models = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash-001", 
+        "gemini-2.0-flash",
+        "gemini-2.5-pro"
+    ]
     
     full_prompt = f"{SYSTEM_PROMPT}\n\nUsuario: {user_message}"
-    
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}],
         "generationConfig": {"temperature": 0.3}
     }
     
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        
-        if response.status_code == 200:
-            return response.json().get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
-        else:
-            logging.error(f"Error Gemini 2.0 ({response.status_code}): {response.text}")
-            return f"⚠️ Error {response.status_code}. Detalle: {response.text[:100]}"
+    last_error = ""
+
+    for model in models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
+            response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
             
-    except Exception as e:
-        logging.error(f"Excepción: {e}")
-        return "Error de conexión con la IA."
+            if response.status_code == 200:
+                # Éxito
+                return response.json().get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
+            elif response.status_code == 429:
+                logging.warning(f"Quota excedida en {model}, probando siguiente...")
+                last_error = "Cuota excedida (Tu plan gratuito tiene límites por minuto)."
+                continue # Probar siguiente modelo
+            else:
+                logging.error(f"Error {model} ({response.status_code})")
+                last_error = f"Error {response.status_code}: {response.text[:100]}"
+                
+        except Exception as e:
+            logging.error(f"Excepción {model}: {e}")
+            last_error = str(e)
+
+    return f"⚠️ No pude responder. {last_error}\nIntenta esperar 1 minuto."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
