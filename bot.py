@@ -58,42 +58,49 @@ import requests
 import json
 
 
+
 async def get_gemini_response(user_message):
-    try:
-        clean_key = GEMINI_API_KEY.strip() if GEMINI_API_KEY else ""
-        # Fallback a gemini-pro (Modelo 1.0 más compatible) si el anterior falla
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={clean_key}"
-        headers = {'Content-Type': 'application/json'}
-        
-        # Gemini 1.0 Pro funciona mejor con el system prompt concatenado
-        full_prompt = f"{SYSTEM_PROMPT}\n\nUsuario: {user_message}"
-        payload = {
-            "contents": [{
-                "parts": [{"text": full_prompt}]
-            }],
-            "generationConfig": {
-                "temperature": 0.3
+    clean_key = GEMINI_API_KEY.strip() if GEMINI_API_KEY else ""
+    
+    # 1. Intentar con gemini-1.5-flash en endpoint v1beta (Más capaz)
+    models_to_try = [
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-pro",
+        "gemini-1.0-pro"
+    ]
+
+    full_prompt = f"{SYSTEM_PROMPT}\n\nUsuario: {user_message}"
+
+    for model_name in models_to_try:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+            payload = {
+                "contents": [{"parts": [{"text": full_prompt}]}]
             }
-        }
-        
-        response = requests.post(url, headers=headers, json=payload)
-        
-        if response.status_code == 200:
-            result = response.json()
-            # Navegar la respuesta con seguridad
-            try:
-                return result.get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
-            except IndexError:
-                return "La IA no generó contenido (Bloqueo de seguridad posible)."
-        else:
-            # Mostrar el error real para depurar
-            error_detail = response.text
-            logging.error(f"Error Gemini API ({response.status_code}): {error_detail}")
-            return f"⚠️ Error {response.status_code} de Google.\nDetalle: {error_detail[:200]}..."
+            response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
             
-    except Exception as e:
-        logging.error(f"Excepción en llamada a Gemini: {e}")
-        return "Disculpa, hubo un error técnico interno."
+            if response.status_code == 200:
+                return response.json().get('candidates', [])[0].get('content', {}).get('parts', [])[0].get('text', 'Sin respuesta')
+            
+            # Si es 404, probamos el siguiente modelo
+            if response.status_code != 404:
+                logging.error(f"Error {model_name}: {response.text}")
+                
+        except Exception as e:
+            logging.error(f"Excepción {model_name}: {e}")
+
+    # 2. Si todo falla, pedir lista de modelos disponibles para depurar
+    try:
+        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
+        list_resp = requests.get(list_url)
+        if list_resp.status_code == 200:
+            available = [m['name'] for m in list_resp.json().get('models', [])]
+            return f"⚠️ Error de Configuración. Modelos disponibles para tu llave: {', '.join(available[:5])}..."
+        else:
+            return f"⚠️ Tu API Key no funciona o no tiene permisos. Error: {list_resp.status_code}"
+    except:
+        return "Error fatal. Verifica tu API Key en Google AI Studio."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
