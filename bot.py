@@ -6,8 +6,7 @@ import threading
 from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
-from google import genai
-from google.genai import types
+
 
 # --- Configuración ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
