@@ -61,18 +61,16 @@ import json
 async def get_gemini_response(user_message):
     try:
         clean_key = GEMINI_API_KEY.strip() if GEMINI_API_KEY else ""
-        # Usamos el alias genérico que suele estar siempre disponible
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+        # Fallback a gemini-pro (Modelo 1.0 más compatible) si el anterior falla
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={clean_key}"
         headers = {'Content-Type': 'application/json'}
         
-        # Estructura del payload
+        # Gemini 1.0 Pro funciona mejor con el system prompt concatenado
+        full_prompt = f"{SYSTEM_PROMPT}\n\nUsuario: {user_message}"
         payload = {
             "contents": [{
-                "parts": [{"text": user_message}]
+                "parts": [{"text": full_prompt}]
             }],
-            "system_instruction": {
-                "parts": [{"text": SYSTEM_PROMPT}]
-            },
             "generationConfig": {
                 "temperature": 0.3
             }
